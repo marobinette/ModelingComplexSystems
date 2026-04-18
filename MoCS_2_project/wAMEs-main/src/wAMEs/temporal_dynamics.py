@@ -179,38 +179,40 @@ def vector_field_w_kernel(v, t, inf_mat, w_mat, state_meta, mu):
 
     rho = r * excess_susceptible_membership(m, gm, sm)
     I = infected_fraction(sm, gm)
-    # S_w: probability that a swapping node's replacement is susceptible,
-    # weighted by the actual switching rates across group states.
-    # Replaces the naive (1-I) used in the scalar case.
-    # Reduces exactly to (1-I) when w_mat is constant (verified numerically).
-    S_w = (
-        np.sum((nmat[2:, :] - imat[2:, :]) * w_mat[2:, :] * fni[2:, :] * pnmat[2:, :])
-        / np.sum(nmat[2:, :] * w_mat[2:, :] * fni[2:, :] * pnmat[2:, :])
-    )
 
-
-    # Node dynamics (unchanged: switching is group-internal, not node-marginal)
+    # need to be more defensive here:
+    # if denom is > 0 there are mixed groups contributing to the switching flux,
+    # so LHD's weighted formula is valid and gives the correct bias in who gets swapped.
+    S_w_denom = np.sum(nmat[2:, :] * w_mat[2:, :] * fni[2:, :] * pnmat[2:, :])
+    if S_w_denom > 1e-14:
+        S_w = (
+            np.sum((nmat[2:, :] - imat[2:, :]) * w_mat[2:, :] * fni[2:, :] * pnmat[2:, :])
+            / S_w_denom
+        )
+    else:
+        S_w = 1.0 - I  # fallback to the original mean-field switching term if the kernel is degenerate
+        print('hitting else code')
     sm_field = mu * (1.0 - sm) - sm * m * r
 
     # i+1 -> i
     fni_field[2:, :nmax] += (
         imat[2:, 1:]
-        * (mu + w_mat[2:, 1:] * (1.0 - S_w))
+        * (mu + w_mat[2:, 1:] * S_w)          # was (1 - S_w)
         * fni[2:, 1:]
     )
 
     # diagonal outflow
     fni_field[2:, :] += (
-        -imat[2:, :] * (mu + w_mat[2:, :] * (1.0 - S_w))
-        - (nmat[2:, :] - imat[2:, :]) * (inf_mat[2:, :] + rho + w_mat[2:, :] * S_w)
+        -imat[2:, :] * (mu + w_mat[2:, :] * S_w)          # was (1 - S_w)
+        - (nmat[2:, :] - imat[2:, :]) * (inf_mat[2:, :] + rho + w_mat[2:, :] * (1.0 - S_w))  # was S_w
     ) * fni[2:, :]
 
     # i-1 -> i
     fni_field[2:, 1:nmax + 1] += (
         (nmat[2:, :nmax] - imat[2:, :nmax])
-        * (inf_mat[2:, :nmax] + rho + w_mat[2:, :nmax] * S_w)
+        * (inf_mat[2:, :nmax] + rho + w_mat[2:, :nmax] * (1.0 - S_w))  # was S_w
         * fni[2:, :nmax]
-)
+    )
     return np.concatenate((sm_field, fni_field.reshape((nmax + 1) ** 2)))
 
 
