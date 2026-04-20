@@ -404,5 +404,10 @@ def integrate_I_traj_kernel(
         [infected_fraction(v[:mmax + 1], gm) for v in v_traj],
         dtype=float,
     )
+    # return distribution of group states instead of just the infected fraction trajectory
+    fni_traj = np.array(
+        [v[mmax + 1:].reshape((nmax + 1, nmax + 1)) for v in v_traj],
+        dtype=float,
+    )
 
-    return t, I_traj
+    return t, I_traj, fni_traj
